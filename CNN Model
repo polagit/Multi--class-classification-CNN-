@@ -1,0 +1,223 @@
+
+import cv2
+import os
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn import preprocessing
+
+data_path =r"D:\object detective2\BasicTraining\train"
+img_size=128            
+counter=0            
+X=[]
+Y=[]
+categories=os.listdir(data_path)
+ 
+for category in categories:                                                           
+    folder_path=os.path.join(data_path,category)                                      
+    img_names=os.listdir(folder_path)                                                
+ 
+    for img_name in img_names:
+        img_path=os.path.join(folder_path,img_name)
+        fullpath=os.path.join(data_path,category,img_name)
+        try:
+            img = cv2.imread(fullpath, cv2.IMREAD_COLOR)
+            img = cv2.resize(img, (img_size,img_size))
+            img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
+            X.append(img)
+            Y.append(category)
+            counter+=1
+            print("Reprocessing Image Number: ",counter)
+        except:
+            print("Error in ==> ",counter)
+ 
+imgs=np.array(X)/255
+lbls=np.array(Y)
+
+#Label Encoding
+le = preprocessing.LabelEncoder()
+le.fit(lbls)
+lbls_encoded = le.transform(lbls)
+ 
+
+#Train and Test Split
+train_x, test_x,train_y, test_y = train_test_split(imgs,lbls_encoded,test_size=0.2,stratify=(lbls_encoded))
+val_x, test_x,val_y, test_y = train_test_split(test_x, test_y,test_size=0.5,stratify=(test_y))
+
+#One Hot Encoding
+from keras.utils import np_utils
+train_y= np_utils.to_categorical(train_y,5)
+test_y= np_utils.to_categorical(test_y,5)
+val_y= np_utils.to_categorical(val_y,5)
+
+len(np.unique(lbls_encoded))
+
+
+# In[11]:
+
+
+from keras.preprocessing.image import ImageDataGenerator
+#Image Data Augmentation
+train_generator = ImageDataGenerator(rotation_range=10,height_shift_range=0.2,width_shift_range=0.2 ,horizontal_flip=True, zoom_range=.1)
+
+val_generator = ImageDataGenerator(rotation_range=10,height_shift_range=0.2,width_shift_range=0.2 ,horizontal_flip=True, zoom_range=.1)
+
+test_generator = ImageDataGenerator(rotation_range=10,height_shift_range=0.2,width_shift_range=0.2 ,horizontal_flip=True, zoom_range=.1)
+
+#Fitting the augmentation defined above to the data
+train_generator.fit(train_x)
+val_generator.fit(val_x)
+test_generator.fit(test_x)
+
+
+# In[15]:
+
+
+# Build our model after Editing
+import tensorflow as tf
+
+model = tf.keras.models.Sequential([
+    tf.keras.layers.Conv2D(16,(3,3),activation = "relu" , input_shape = (128,128,3)) ,
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(32,(3,3),activation = "relu") ,  
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(64,(3,3),activation = "relu") ,  
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Conv2D(128,(3,3),activation = "relu"),  
+    tf.keras.layers.MaxPooling2D(2,2),
+    tf.keras.layers.Flatten(), 
+    tf.keras.layers.Dense(128,activation="relu"),      #Adding the Hidden layer
+    tf.keras.layers.Dropout(0.1),
+    tf.keras.layers.Dense(400,activation ="relu"),
+    tf.keras.layers.Dropout(0.3),
+    tf.keras.layers.Dense(300,activation="relu"),
+    tf.keras.layers.Dropout(0.4),
+    tf.keras.layers.Dense(200,activation ="relu"),
+    tf.keras.layers.Dropout(0.2),
+    tf.keras.layers.Dense(len(np.unique(lbls_encoded)),activation = "softmax")   #Adding the Output Layer
+])
+
+# the model before Editig
+
+# model = tf.keras.models.Sequential([
+#     tf.keras.layers.Conv2D(16,(1,1),activation = "relu" , input_shape = (128,128,3)) ,
+#     tf.keras.layers.Conv2D(16,(3,3),activation = "relu") ,
+#     tf.keras.layers.MaxPooling2D(2,2),
+#     tf.keras.layers.Conv2D(32,(1,1),activation = "relu") ,  
+#     tf.keras.layers.Conv2D(32,(3,3),activation = "relu") ,  
+#     tf.keras.layers.MaxPooling2D(2,2),
+#     tf.keras.layers.Conv2D(64,(1,1),activation = "relu") ,
+#     tf.keras.layers.Conv2D(64,(3,3),activation = "relu") ,
+#     tf.keras.layers.Conv2D(64,(1,1),activation = "relu") ,  
+#     tf.keras.layers.MaxPooling2D(2,2),
+#     tf.keras.layers.Conv2D(128,(1,1),activation = "relu"), 
+#     tf.keras.layers.Conv2D(128,(3,3),activation = "relu"), 
+#     tf.keras.layers.Conv2D(128,(1,1),activation = "relu"),  
+#     tf.keras.layers.MaxPooling2D(2,2),
+#     tf.keras.layers.Conv2D(128,(1,1),activation = "relu"), 
+#     tf.keras.layers.Conv2D(128,(3,3),activation = "relu"), 
+#     tf.keras.layers.Conv2D(128,(1,1),activation = "relu"),  
+#     tf.keras.layers.MaxPooling2D(2,2),
+#     tf.keras.layers.Flatten(), 
+#     tf.keras.layers.Dense(550,activation="relu"),      #Adding the Hidden layer
+#     tf.keras.layers.Dropout(0.1,seed = 2019),
+#     tf.keras.layers.Dense(400,activation ="relu"),
+#     tf.keras.layers.Dropout(0.3,seed = 2019),
+#     tf.keras.layers.Dense(300,activation="relu"),
+#     tf.keras.layers.Dropout(0.4,seed = 2019),
+#     tf.keras.layers.Dense(len(np.unique(lbls_encoded)),activation = "softmax")   #Adding the Output Layer
+# ])
+
+model.summary()
+model.compile(optimizer='adamax', loss='categorical_crossentropy', metrics = ['acc'])
+#Training the model
+checkPoint=tf.keras.callbacks.ModelCheckpoint(r"D:\my projects\selected\model_checkpoint.h5", monitor='val_loss', verbose=1, save_best_only=True)
+history = model.fit(train_x,train_y,epochs=20,validation_data=(val_x,val_y),callbacks=[tf.keras.callbacks.EarlyStopping(patience=5,monitor="val_loss"),checkPoint])
+
+
+# In[16]:
+
+
+# Evalute the model
+model.evaluate(train_x,train_y)
+model.evaluate(test_x,test_y)
+model.evaluate(val_x,val_y)
+
+
+# In[17]:
+
+
+# plot the Trainig and Validation Accuracy
+import matplotlib.pyplot as plt
+loss=history.history['loss']
+val_loss=history.history['val_loss']
+epochs=range(1,len(loss)+1)
+plt.plot(epochs,loss,'y',label="Trainig loss")
+plt.plot(epochs,loss,'r',label="Validition loss")
+plt.title('Trainig and Validition loss')
+plt.xlabel('Epochs')
+plt.ylabel('Loss')
+plt.legend()
+plt.show()
+
+acc=history.history['acc']
+val_acc=history.history['val_acc']
+epochs=range(1,len(loss)+1)
+plt.plot(epochs,loss,'y',label="Trainig acc")
+plt.plot(epochs,loss,'r',label="Validition acc")
+plt.title('Trainig and Validition acc')
+plt.xlabel('Epochs')
+plt.ylabel('Accuracy')
+plt.legend()
+plt.show()
+
+
+# In[18]:
+
+
+from sklearn.metrics import confusion_matrix
+import pandas as pd
+import seaborn as sns
+#---------------------confusion_matrix----------------
+pred_y=model.predict(test_x)
+pred_y=np.argmax(pred_y, axis=1)
+test_y=np.argmax(test_y, axis=1)
+cm = confusion_matrix(test_y, pred_y)
+cm_df = pd.DataFrame(cm,
+                     index = ['Cars','Flowers','Fruits','Human','Traffic sign'], 
+                     columns = ['Cars','Flowers','Fruits','Human','Traffic sign'])
+#Plotting the confusion matrix
+plt.figure(figsize=(5,4))
+sns.heatmap(cm_df, annot=True)
+plt.title('Confusion Matrix')
+plt.ylabel('Actal Values')
+plt.xlabel('Predicted Values')
+plt.show()
+
+
+# In[19]:
+
+
+#----------------------roc----------------------------
+from sklearn.preprocessing import label_binarize
+from sklearn.metrics import roc_curve, auc
+n_classes=5;
+test_y2 = label_binarize(test_y, classes=[0,1,2,3,4])
+pred2 = label_binarize(pred_y, classes=[0,1,2,3,4])
+fpr = dict()
+tpr = dict()
+roc_auc = dict()
+for i in range(5):
+    fpr[i], tpr[i], _ = roc_curve(test_y2[:, i], pred2[:, i])
+    roc_auc[i] = auc(fpr[i], tpr[i])
+# Plot of a ROC curve for a specific class
+for i in range(5):
+    plt.figure()
+    plt.plot(fpr[i], tpr[i], label='ROC curve (area = %0.2f)' % roc_auc[i])
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver operating characteristic example')
+    plt.legend(loc="lower right")
+    plt.show()
